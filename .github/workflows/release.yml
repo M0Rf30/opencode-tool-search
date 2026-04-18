@@ -10,8 +10,24 @@ permissions:
   id-token: write
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:exports
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: npm
     steps:
       - uses: actions/checkout@v4
 
@@ -22,12 +38,17 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npm run check:exports
 
-      - name: Publish to npm
+      - name: Publish to npm (Trusted Publishing via OIDC)
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
