@@ -7,7 +7,7 @@ Inspired by [famitzsy8/opencode-tool-search-tool](https://github.com/famitzsy8/o
 ## How it works
 
 1. The `tool.definition` hook intercepts every tool before the LLM sees it
-2. Tools not in `alwaysLoad` get their descriptions replaced with a short `[deferred]` stub and parameters stripped
+2. Tools not in `alwaysLoad` get their descriptions replaced with a short `[deferred]` stub (parameters are kept — see [OpenAI compatibility](#openai-compatibility))
 3. Two search tools (`tool_search` and `tool_search_regex`) are always available with full descriptions
 4. The system prompt tells the model to use `tool_search` when it encounters deferred tools
 5. When the model calls `tool_search("file operations")`, it gets back full descriptions and parameter schemas of matching tools
@@ -100,16 +100,22 @@ tool_search_regex({ pattern: "jenkins|build" })   // → Jenkins/CI tools
 
 The [fork](https://github.com/famitzsy8/opencode-tool-search-tool) modifies opencode's core to fully hide deferred tools from the LLM's tool list. This plugin uses the official plugin API:
 
-- Tools are still listed (with a `[d]` stub description + empty parameters schema)
+- Tools are still listed (with a `[d]` stub description; parameters are preserved)
 - The `tool.definition` hook strips descriptions; the system prompt guides the model
 - ~90% of the fork's benefit with zero core changes
 - Works with any opencode version that supports `tool.definition` hook (v1.4.10+)
 
 ### What accounts for the remaining ~10%
 
-Each deferred tool still occupies a slot in the tool list with its name (~5-15 tokens) and minimal stub (~5 tokens). With 180 deferred tools this adds up to ~1,800-3,600 tokens per turn. The fork eliminates these entirely by filtering tools in `resolveTools()` before they reach the LLM.
+Each deferred tool still occupies a slot in the tool list with its name (~5-15 tokens), minimal stub (~5 tokens), and parameter schema (~20-50 tokens). With 180 deferred tools this adds up to ~5,400-12,600 tokens per turn. The fork eliminates these entirely by filtering tools in `resolveTools()` before they reach the LLM.
 
 Fully closing the gap requires upstream changes to opencode's plugin API — see [Scalability](#scalability).
+
+## OpenAI compatibility
+
+Earlier versions replaced deferred tool parameters with an empty schema (`z.object({})`). This breaks OpenAI models: when a ChatGPT model calls a deferred tool directly (ignoring the `[d]` stub), the empty schema can produce `undefined` arguments, which the OpenAI Responses API rejects with `Missing required parameter: 'input[N].arguments'`.
+
+Since v0.4.3, deferred tools keep their original parameter schemas — only descriptions are stripped. Parameter schemas are small relative to descriptions, so the token savings impact is minimal (~3-5%). A provider-aware system prompt also tells non-Anthropic models explicitly not to call `[d]` tools without searching first.
 
 ## Scalability
 
