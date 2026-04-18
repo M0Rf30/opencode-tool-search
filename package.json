@@ -1,6 +1,6 @@
 {
   "name": "opencode-tool-search",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Tool search plugin for OpenCode — BM25 and regex search to discover tools on demand, reducing context usage",
   "type": "module",
   "main": "./dist/index.js",

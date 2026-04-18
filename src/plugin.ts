@@ -60,14 +60,16 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
   let totalCount = 0;
   let toastShown = false;
 
-  showToast(ctx, 'Tool Search', 'Active — tools will be deferred on first prompt.', 'info', 4000);
+  setTimeout(() => {
+    showToast(ctx, 'Tool Search', 'Active — tools will be deferred on first prompt.', 'info', 4000);
+  }, 3000);
 
   return {
     tool: {
       tool_search: tool({
         description: [
           'Search for available tools by keyword.',
-          'Use this whenever you need a capability but the tool has a [deferred] description.',
+          'Use this whenever you need a capability but the tool has a [d] description.',
           '',
           'Examples:',
           '  tool_search({ query: "file" })        → tools for reading/writing files',
