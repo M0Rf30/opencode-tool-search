@@ -100,7 +100,7 @@ tool_search_regex({ pattern: "jenkins|build" })   // → Jenkins/CI tools
 
 The [fork](https://github.com/famitzsy8/opencode-tool-search-tool) modifies opencode's core to fully hide deferred tools from the LLM's tool list. This plugin uses the official plugin API:
 
-- Tools are still listed (with a `[d]` stub description + minimal `{"type":"object"}` schema)
+- Tools are still listed (with a `[d]` stub description + empty parameters schema)
 - The `tool.definition` hook strips descriptions; the system prompt guides the model
 - ~90% of the fork's benefit with zero core changes
 - Works with any opencode version that supports `tool.definition` hook (v1.4.10+)

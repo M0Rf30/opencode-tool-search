@@ -146,8 +146,7 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
 
       if (!alwaysLoad.has(input.toolID)) {
         output.description = deferDescription;
-        // Minimal JSON schema — avoids Zod's extra "properties":{},"additionalProperties":false
-        output.parameters = { type: 'object' };
+        output.parameters = tool.schema.object({});
       }
     },
 
