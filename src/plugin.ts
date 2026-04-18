@@ -37,7 +37,11 @@ function showToast(
   variant: 'info' | 'success' | 'error' = 'info',
   duration = 3000,
 ): void {
-  ctx.client.tui.showToast({ body: { title, message, variant, duration } }).catch(() => {});
+  // Schedule outside the current execution context (Effect-ts runtime / hook pipeline)
+  // so the in-process fetch to /tui/show-toast doesn't conflict with the active request.
+  setTimeout(() => {
+    ctx.client.tui.showToast({ body: { title, message, variant, duration } }).catch(() => {});
+  }, 100);
 }
 
 export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Promise<Hooks> => {
@@ -56,6 +60,8 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
   let deferredCount = 0;
   let totalCount = 0;
   let toastShown = false;
+
+  showToast(ctx, 'Tool Search', 'Active — tools will be deferred on first prompt.', 'info', 4000);
 
   return {
     tool: {
