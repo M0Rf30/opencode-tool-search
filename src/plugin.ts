@@ -1,47 +1,49 @@
-import type { Plugin, PluginOptions, Hooks } from '@opencode-ai/plugin';
+import type { Hooks, Plugin, PluginInput, PluginOptions } from '@opencode-ai/plugin';
 import { tool } from '@opencode-ai/plugin';
 import { Catalog } from './catalog.js';
-import type { ToolSearchConfig } from './types.js';
+import type { CatalogEntry, ToolSearchConfig } from './types.js';
 
 const SEARCH_TOOL_IDS = new Set(['tool_search', 'tool_search_regex']);
 
 const DEFAULT_DEFER_MSG =
   '[deferred] Use tool_search("<keywords>") to discover this tool\'s capabilities.';
 
-function summarizeParameters(params: unknown): string {
+export function summarizeParameters(params: unknown): string {
   if (!params || typeof params !== 'object') return '(none)';
 
   const schema = params as Record<string, unknown>;
-  const props = schema['properties'];
+  const props = schema.properties;
   if (!props || typeof props !== 'object') return '(none)';
 
-  const required = new Set(
-    Array.isArray(schema['required']) ? (schema['required'] as string[]) : [],
-  );
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : []);
 
   const lines: string[] = [];
   for (const [name, def] of Object.entries(props as Record<string, unknown>)) {
     if (!def || typeof def !== 'object') continue;
     const d = def as Record<string, unknown>;
-    const type = typeof d['type'] === 'string' ? d['type'] : 'unknown';
-    const desc = typeof d['description'] === 'string' ? d['description'] : '';
+    const type = typeof d.type === 'string' ? d.type : 'unknown';
+    const desc = typeof d.description === 'string' ? d.description : '';
     const req = required.has(name) ? ' (required)' : '';
-    lines.push(`  - ${name}: ${type}${req}${desc ? ' — ' + desc : ''}`);
+    lines.push(`  - ${name}: ${type}${req}${desc ? ` — ${desc}` : ''}`);
   }
 
   return lines.length > 0 ? lines.join('\n') : '(none)';
 }
 
-export const ToolSearchPlugin: Plugin = async (
-  _ctx,
-  options?: PluginOptions,
-): Promise<Hooks> => {
+function showToast(
+  ctx: PluginInput,
+  title: string,
+  message: string,
+  variant: 'info' | 'success' | 'error' = 'info',
+  duration = 3000,
+): void {
+  ctx.client.tui.showToast({ body: { title, message, variant, duration } }).catch(() => {});
+}
+
+export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Promise<Hooks> => {
   const config = (options ?? {}) as ToolSearchConfig;
 
-  const alwaysLoad = new Set([
-    ...SEARCH_TOOL_IDS,
-    ...(config.alwaysLoad ?? []),
-  ]);
+  const alwaysLoad = new Set([...SEARCH_TOOL_IDS, ...(config.alwaysLoad ?? [])]);
 
   const searchLimit = config.searchLimit ?? 5;
   const deferDescription = config.deferDescription ?? DEFAULT_DEFER_MSG;
@@ -53,6 +55,7 @@ export const ToolSearchPlugin: Plugin = async (
 
   let deferredCount = 0;
   let totalCount = 0;
+  let toastShown = false;
 
   return {
     tool: {
@@ -107,7 +110,7 @@ export const ToolSearchPlugin: Plugin = async (
             .describe('Regex pattern to match against tool names and descriptions'),
         },
         async execute(args) {
-          let results;
+          let results: CatalogEntry[];
           try {
             results = catalog.searchRegex(args.pattern, searchLimit);
           } catch {
@@ -156,6 +159,17 @@ export const ToolSearchPlugin: Plugin = async (
             'Always search before concluding you lack a capability.',
           ].join(' '),
         );
+
+        if (!toastShown) {
+          toastShown = true;
+          showToast(
+            ctx,
+            'Tool Search',
+            `${deferredCount}/${totalCount} tools deferred.`,
+            'info',
+            4000,
+          );
+        }
       }
     },
   };

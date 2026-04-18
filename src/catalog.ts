@@ -1,4 +1,4 @@
-import { createIndex, search as bm25Search, type Index, type SearchResult } from './bm25.js';
+import { search as bm25Search, createIndex, type Index, type SearchResult } from './bm25.js';
 import type { BM25Config, CatalogEntry } from './types.js';
 
 // Populated lazily via tool.definition hook — all tools are captured before LLM sees them.
@@ -31,9 +31,7 @@ export class Catalog {
   searchRegex(pattern: string, limit: number): CatalogEntry[] {
     const regex = new RegExp(pattern, 'i');
     const items = Array.from(this.entries.values());
-    return items
-      .filter((e) => regex.test(e.id) || regex.test(e.description))
-      .slice(0, limit);
+    return items.filter((e) => regex.test(e.id) || regex.test(e.description)).slice(0, limit);
   }
 
   get(id: string): CatalogEntry | undefined {
