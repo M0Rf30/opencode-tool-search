@@ -148,23 +148,32 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
 
       if (!alwaysLoad.has(input.toolID)) {
         output.description = deferDescription;
-        output.parameters = tool.schema.object({});
+        // Keep original parameters — empty schemas break OpenAI Responses API
+        // (Missing required parameter: 'input[N].arguments'). See issue #7.
       }
     },
 
-    'experimental.chat.system.transform': async (_input, output) => {
+    'experimental.chat.system.transform': async (input, output) => {
       totalCount = catalog.size;
       deferredCount = totalCount - (alwaysLoad.size - SEARCH_TOOL_IDS.size);
       if (deferredCount < 0) deferredCount = 0;
 
       if (deferredCount > 0) {
-        output.system.push(
-          [
-            `[Tool Search] You have access to ${totalCount} tools total. ${deferredCount} of them have deferred descriptions ([d]) to save context.`,
-            'When you see a tool with "[d]" in its description, call tool_search("<keywords>") to discover its full capabilities before using it.',
-            'Always search before concluding you lack a capability.',
-          ].join(' '),
-        );
+        const isAnthropic = input.model?.providerID === 'anthropic';
+
+        const lines = [
+          `[Tool Search] You have access to ${totalCount} tools total. ${deferredCount} of them have deferred descriptions ([d]) to save context.`,
+          'When you see a tool with "[d]" in its description, call tool_search("<keywords>") to discover its full capabilities before using it.',
+          'Always search before concluding you lack a capability.',
+        ];
+
+        if (!isAnthropic) {
+          lines.push(
+            'IMPORTANT: Do NOT call any tool whose description is just "[d]". You MUST call tool_search first to get the full description and parameters, then call the tool.',
+          );
+        }
+
+        output.system.push(lines.join(' '));
 
         if (!toastShown) {
           toastShown = true;
