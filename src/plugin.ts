@@ -5,8 +5,7 @@ import type { CatalogEntry, ToolSearchConfig } from './types.js';
 
 const SEARCH_TOOL_IDS = new Set(['tool_search', 'tool_search_regex']);
 
-const DEFAULT_DEFER_MSG =
-  '[deferred] Use tool_search("<keywords>") to discover this tool\'s capabilities.';
+const DEFAULT_DEFER_MSG = '[d]';
 
 export function summarizeParameters(params: unknown): string {
   if (!params || typeof params !== 'object') return '(none)';
@@ -147,7 +146,8 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
 
       if (!alwaysLoad.has(input.toolID)) {
         output.description = deferDescription;
-        output.parameters = tool.schema.object({});
+        // Minimal JSON schema — avoids Zod's extra "properties":{},"additionalProperties":false
+        output.parameters = { type: 'object' };
       }
     },
 
@@ -159,9 +159,8 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
       if (deferredCount > 0) {
         output.system.push(
           [
-            `[Tool Search] You have access to ${totalCount} tools total.`,
-            `${deferredCount} of them have deferred descriptions to save context.`,
-            'When you see a tool with "[deferred]" in its description, call tool_search with keywords to discover its full capabilities before using it.',
+            `[Tool Search] You have access to ${totalCount} tools total. ${deferredCount} of them have deferred descriptions ([d]) to save context.`,
+            'When you see a tool with "[d]" in its description, call tool_search("<keywords>") to discover its full capabilities before using it.',
             'Always search before concluding you lack a capability.',
           ].join(' '),
         );

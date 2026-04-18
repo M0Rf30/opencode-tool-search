@@ -16,9 +16,9 @@ Inspired by [famitzsy8/opencode-tool-search-tool](https://github.com/famitzsy8/o
 
 | Setup | Total tools | Deferred | Savings per turn |
 |---|---|---|---|
-| Built-in only | ~32 | ~24 | ~6,600 tokens (69%) |
-| 3 MCP servers | ~60 | ~52 | ~14,000 tokens (78%) |
-| 6+ MCP servers | ~190 | ~182 | ~55,000 tokens (85%) |
+| Built-in only | ~32 | ~24 | ~8,400 tokens (88%) |
+| 3 MCP servers | ~60 | ~52 | ~17,000 tokens (89%) |
+| 6+ MCP servers | ~190 | ~182 | ~57,000 tokens (91%) |
 
 ## Install
 
@@ -60,7 +60,7 @@ For local testing with `file://`:
 | `searchLimit` | `number` | `5` | Max results per search query |
 | `bm25.k1` | `number` | `0.9` | Term frequency saturation (0.5–2.0) |
 | `bm25.b` | `number` | `0.4` | Document length normalization (0–1) |
-| `deferDescription` | `string` | `[deferred] Use tool_search(...)` | Custom stub for deferred tools |
+| `deferDescription` | `string` | `[d]` | Custom stub for deferred tools |
 
 ### BM25 tuning
 
@@ -100,10 +100,23 @@ tool_search_regex({ pattern: "jenkins|build" })   // → Jenkins/CI tools
 
 The [fork](https://github.com/famitzsy8/opencode-tool-search-tool) modifies opencode's core to fully hide deferred tools from the LLM's tool list. This plugin uses the official plugin API:
 
-- Tools are still listed (with minimal stub descriptions + empty parameters)
+- Tools are still listed (with a `[d]` stub description + minimal `{"type":"object"}` schema)
 - The `tool.definition` hook strips descriptions; the system prompt guides the model
-- ~80% of the fork's benefit with zero core changes
+- ~90% of the fork's benefit with zero core changes
 - Works with any opencode version that supports `tool.definition` hook (v1.4.10+)
+
+### What accounts for the remaining ~10%
+
+Each deferred tool still occupies a slot in the tool list with its name (~5-15 tokens) and minimal stub (~5 tokens). With 180 deferred tools this adds up to ~1,800-3,600 tokens per turn. The fork eliminates these entirely by filtering tools in `resolveTools()` before they reach the LLM.
+
+Fully closing the gap requires upstream changes to opencode's plugin API — see [Scalability](#scalability).
+
+## Scalability
+
+The `tool.definition` hook can modify tool descriptions and parameters but cannot remove tools from the list entirely. Two upstream proposals would close the remaining gap:
+
+1. **`hidden` field on `tool.definition` output** ([opencode#23297](https://github.com/anomalyco/opencode/issues/23297)) — let plugins suppress tools from the LLM tool list entirely
+2. **`defer_loading` passthrough to Anthropic API** ([opencode#23298](https://github.com/anomalyco/opencode/issues/23298)) — pass Anthropic's native `defer_loading: true` through to the API, enabling server-side tool search with prompt cache preservation
 
 ## Build
 
