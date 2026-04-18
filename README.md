@@ -117,6 +117,10 @@ Earlier versions replaced deferred tool parameters with an empty schema (`z.obje
 
 Since v0.4.3, deferred tools keep their original parameter schemas — only descriptions are stripped. Parameter schemas are small relative to descriptions, so the token savings impact is minimal (~3-5%). A provider-aware system prompt also tells non-Anthropic models explicitly not to call `[d]` tools without searching first.
 
+## Compatibility with RTK
+
+This plugin works alongside [RTK (Rust Token Killer)](https://github.com/rtk-ai/rtk) with no conflicts. RTK hooks into `tool.execute.before` to compress bash/shell output; this plugin hooks into `tool.definition` and `experimental.chat.system.transform` to defer tool descriptions. Different hooks, complementary token savings.
+
 ## Scalability
 
 The `tool.definition` hook can modify tool descriptions and parameters but cannot remove tools from the list entirely. Two upstream proposals would close the remaining gap:
