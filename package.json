@@ -1,0 +1,55 @@
+{
+  "name": "opencode-tool-search",
+  "version": "0.1.0",
+  "description": "Tool search plugin for OpenCode — BM25 and regex search to discover tools on demand, reducing context usage",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && node esbuild.config.mjs",
+    "dev": "tsc --watch",
+    "clean": "node -e \"const fs=require('fs');if(fs.existsSync('dist'))fs.rmSync('dist',{recursive:true});\"",
+    "check:exports": "node --input-type=module -e \"import('./dist/index.js').then((m)=>{if(typeof m.default!=='function'){throw new Error('Default export must be a function');}for(const [key,value] of Object.entries(m)){if(typeof value!=='function'){throw new Error('Root export '+key+' must be a function to satisfy plugin loader constraints');}}})\"",
+    "prepublishOnly": "npm run clean && npm run build && npm run check:exports"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "tool-search",
+    "bm25",
+    "context-reduction",
+    "deferred-loading"
+  ],
+  "author": "M0Rf30",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/M0Rf30/opencode-tool-search.git"
+  },
+  "homepage": "https://github.com/M0Rf30/opencode-tool-search#readme",
+  "bugs": {
+    "url": "https://github.com/M0Rf30/opencode-tool-search/issues"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

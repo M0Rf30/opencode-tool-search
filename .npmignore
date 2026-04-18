@@ -1,0 +1,6 @@
+node_modules
+src
+*.ts
+!dist/**/*.d.ts
+tsconfig.json
+.npmignore

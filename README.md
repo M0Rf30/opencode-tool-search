@@ -1,0 +1,117 @@
+# opencode-tool-search
+
+An [OpenCode](https://opencode.ai) plugin that implements Claude's [Tool Search Tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool) pattern. Reduces context usage by deferring tool descriptions and letting the model discover tools on demand via BM25 keyword search or regex matching.
+
+Inspired by [famitzsy8/opencode-tool-search-tool](https://github.com/famitzsy8/opencode-tool-search-tool) (a fork of opencode). This project achieves similar results as a **standalone plugin** — no core modifications needed.
+
+## How it works
+
+1. The `tool.definition` hook intercepts every tool before the LLM sees it
+2. Tools not in `alwaysLoad` get their descriptions replaced with a short `[deferred]` stub and parameters stripped
+3. Two search tools (`tool_search` and `tool_search_regex`) are always available with full descriptions
+4. The system prompt tells the model to use `tool_search` when it encounters deferred tools
+5. When the model calls `tool_search("file operations")`, it gets back full descriptions and parameter schemas of matching tools
+
+## Token savings
+
+| Setup | Total tools | Deferred | Savings per turn |
+|---|---|---|---|
+| Built-in only | ~32 | ~24 | ~6,600 tokens (69%) |
+| 3 MCP servers | ~60 | ~52 | ~14,000 tokens (78%) |
+| 6+ MCP servers | ~190 | ~182 | ~55,000 tokens (85%) |
+
+## Install
+
+```bash
+npm install opencode-tool-search
+```
+
+Add to your `opencode.jsonc`:
+
+```jsonc
+{
+  "plugin": [
+    ["opencode-tool-search", {
+      "alwaysLoad": ["read", "write", "edit", "bash", "glob", "grep"]
+    }]
+  ]
+}
+```
+
+### Local development
+
+For local testing with `file://`:
+
+```jsonc
+{
+  "plugin": [
+    ["file:///path/to/opencode-tool-search/dist/index.js", {
+      "alwaysLoad": ["read", "write", "edit", "bash", "glob", "grep"]
+    }]
+  ]
+}
+```
+
+## Configuration
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `alwaysLoad` | `string[]` | `[]` | Tool IDs that keep full descriptions (never deferred) |
+| `searchLimit` | `number` | `5` | Max results per search query |
+| `bm25.k1` | `number` | `0.9` | Term frequency saturation (0.5–2.0) |
+| `bm25.b` | `number` | `0.4` | Document length normalization (0–1) |
+| `deferDescription` | `string` | `[deferred] Use tool_search(...)` | Custom stub for deferred tools |
+
+### BM25 tuning
+
+Defaults are optimized for smaller language models that send vague queries. For capable models writing specific queries, increase `k1` toward `1.5`.
+
+```jsonc
+["opencode-tool-search", {
+  "alwaysLoad": ["read", "write", "edit", "bash"],
+  "bm25": { "k1": 1.5, "b": 0.75 },
+  "searchLimit": 10
+}]
+```
+
+## Search tools
+
+### `tool_search`
+
+BM25 keyword search. Best for natural language queries.
+
+```
+tool_search({ query: "file" })           // → read, write, edit, glob
+tool_search({ query: "search code" })     // → grep, ast_grep_search
+tool_search({ query: "github issues" })   // → github_list_issues, github_create_issue
+```
+
+### `tool_search_regex`
+
+Regex search (case-insensitive). Best for specific patterns.
+
+```
+tool_search_regex({ pattern: "github.*issue" })  // → GitHub issue tools
+tool_search_regex({ pattern: "^lsp_" })           // → all LSP tools
+tool_search_regex({ pattern: "jenkins|build" })   // → Jenkins/CI tools
+```
+
+## How it differs from the fork
+
+The [fork](https://github.com/famitzsy8/opencode-tool-search-tool) modifies opencode's core to fully hide deferred tools from the LLM's tool list. This plugin uses the official plugin API:
+
+- Tools are still listed (with minimal stub descriptions + empty parameters)
+- The `tool.definition` hook strips descriptions; the system prompt guides the model
+- ~80% of the fork's benefit with zero core changes
+- Works with any opencode version that supports `tool.definition` hook (v1.4.10+)
+
+## Build
+
+```bash
+npm install
+npm run build    # tsc + esbuild bundle
+```
+
+## License
+
+MIT
