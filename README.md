@@ -135,14 +135,45 @@ of [`anomalyco/opencode`](https://github.com/anomalyco/opencode) that carries a
 single 7-line patch firing `tool.definition` for MCP tools, making this plugin
 work with MCP. Everything else tracks `dev` upstream daily.
 
+### Arch Linux (AUR)
+
 ```bash
-# Replace your opencode binary with the patched build
+# pacman wrappers (yay / paru / etc.)
+yay -S opencode-m0rf30-bin opencode-tool-search
+```
+
+The `opencode-m0rf30-bin` package `provides=('opencode')` and conflicts with
+`opencode`, `opencode-bin`, and `opencode-git`, so it drop-in replaces any
+existing opencode install. The `opencode-tool-search` package depends on
+`opencode` (so either upstream or this fork satisfies it) and installs the
+plugin to `/usr/lib/opencode/plugins/opencode-tool-search`.
+
+After install, point your `opencode.jsonc` at the system plugin path:
+
+```jsonc
+{
+  "plugin": [
+    ["file:///usr/lib/opencode/plugins/opencode-tool-search", {
+      "alwaysLoad": ["read", "write", "edit", "bash", "glob", "grep"]
+    }]
+  ]
+}
+```
+
+### Manual install (other distros)
+
+```bash
 # Linux x86_64 example:
-curl -L -o opencode \
+curl -L -o opencode-linux-x64.tar.gz \
   https://github.com/M0Rf30/opencode/releases/latest/download/opencode-linux-x64.tar.gz
 tar -xzf opencode-linux-x64.tar.gz
-chmod +x opencode
+install -Dm755 opencode ~/.local/bin/opencode
 ```
+
+Other targets in the same release: `opencode-linux-arm64.tar.gz`,
+`opencode-darwin-x64.tar.gz`, `opencode-darwin-arm64.tar.gz`,
+`opencode-windows-x64.zip`, `opencode-windows-arm64.zip`, and `-musl` /
+`-baseline` variants for static / older-CPU builds.
 
 Releases are tagged `vX.Y.Z-m0rf30` mirroring upstream. Drop-in replacement —
 configuration, plugins, MCP servers, and update flow are unchanged. See
