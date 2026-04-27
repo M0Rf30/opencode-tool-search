@@ -17,8 +17,14 @@ Inspired by [famitzsy8/opencode-tool-search-tool](https://github.com/famitzsy8/o
 | Setup | Total tools | Deferred | Savings per turn |
 |---|---|---|---|
 | Built-in only | ~32 | ~24 | ~8,400 tokens (88%) |
-| 3 MCP servers | ~60 | ~52 | ~17,000 tokens (89%) |
-| 6+ MCP servers | ~190 | ~182 | ~57,000 tokens (91%) |
+| Built-in + custom plugin tools | ~50 | ~42 | ~14,000 tokens (88%) |
+
+> **MCP tools are NOT deferred on stock opencode.** The `tool.definition` plugin
+> hook is only fired for built-in and custom plugin tools — MCP tools bypass it
+> entirely (see [opencode-tool-search#9](https://github.com/M0Rf30/opencode-tool-search/issues/9)).
+> The savings rows for "3 MCP servers" / "6+ MCP servers" that previously
+> appeared here were inaccurate and have been removed. To get MCP support today,
+> use the [M0Rf30/opencode fork](#mcp-support-via-the-m0rf30opencode-fork) below.
 
 ## Install
 
@@ -116,6 +122,36 @@ Fully closing the gap requires upstream changes to opencode's plugin API — see
 Earlier versions replaced deferred tool parameters with an empty schema (`z.object({})`). This breaks OpenAI models: when a ChatGPT model calls a deferred tool directly (ignoring the `[d]` stub), the empty schema can produce `undefined` arguments, which the OpenAI Responses API rejects with `Missing required parameter: 'input[N].arguments'`.
 
 Since v0.4.3, deferred tools keep their original parameter schemas — only descriptions are stripped. Parameter schemas are small relative to descriptions, so the token savings impact is minimal (~3-5%). A provider-aware system prompt also tells non-Anthropic models explicitly not to call `[d]` tools without searching first.
+
+## MCP support via the M0Rf30/opencode fork
+
+Stock opencode loads MCP tools directly into the AI SDK tools dict in
+`packages/opencode/src/session/prompt.ts` without ever firing the
+`tool.definition` plugin hook. This means **no plugin** can defer MCP tool
+descriptions on stock opencode — see [#9](https://github.com/M0Rf30/opencode-tool-search/issues/9).
+
+[`M0Rf30/opencode`](https://github.com/M0Rf30/opencode) is a thin downstream fork
+of [`anomalyco/opencode`](https://github.com/anomalyco/opencode) that carries a
+single 7-line patch firing `tool.definition` for MCP tools, making this plugin
+work with MCP. Everything else tracks `dev` upstream daily.
+
+```bash
+# Replace your opencode binary with the patched build
+# Linux x86_64 example:
+curl -L -o opencode \
+  https://github.com/M0Rf30/opencode/releases/latest/download/opencode-linux-x64.tar.gz
+tar -xzf opencode-linux-x64.tar.gz
+chmod +x opencode
+```
+
+Releases are tagged `vX.Y.Z-m0rf30` mirroring upstream. Drop-in replacement —
+configuration, plugins, MCP servers, and update flow are unchanged. See
+[`M0RF30.md`](https://github.com/M0Rf30/opencode/blob/dev/M0RF30.md) in the fork
+for the patch-management workflow.
+
+The patch is also queued for upstream submission. Once merged into
+`anomalyco/opencode`, the fork becomes unnecessary and this section will be
+removed.
 
 ## Compatibility with RTK
 
