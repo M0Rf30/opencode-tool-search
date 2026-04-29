@@ -5,6 +5,17 @@ import type { MCPServerClient } from './client.js';
 type ZodSchema = z.ZodTypeAny;
 
 /**
+ * Reserved key injected into empty MCP tool argument schemas so that
+ * providers that reject empty `properties: {}` tool definitions
+ * (Anthropic strict harness, OpenAI Responses API, Vertex AI Gemini,
+ * SGLang, Antigravity, etc.) accept the call. Stripped before
+ * forwarding args to the MCP server.
+ *
+ * See: anomalyco/opencode #9020, #8184, #9233, #9131, #15041, #20637.
+ */
+const PLACEHOLDER_KEY = '_placeholder';
+
+/**
  * Naive JSON Schema → Zod conversion sufficient for typical MCP tool
  * input schemas (object root with primitive properties, enums, arrays,
  * nested objects). Falls back to z.any() for unknown shapes.
@@ -56,6 +67,16 @@ export interface MCPToolDef {
  * Wrap an MCP tool descriptor as a plugin-native tool. The resulting
  * tool delegates execution to the MCP client and concatenates any
  * text content blocks from the result.
+ *
+ * Empty-args MCP tools (no `properties` declared, or `properties: {}`)
+ * are augmented with an optional `_placeholder` field so the JSON
+ * Schema OpenCode emits to providers always has at least one property.
+ * This sidesteps provider-side rejections like Anthropic's
+ * "content.0.tool_use.input: Field required" and OpenAI Responses'
+ * "Missing required parameter: input[N].arguments". The placeholder
+ * is stripped from the args object before forwarding to the MCP
+ * server, so the server sees `arguments: {}` exactly as it would
+ * from a native OpenCode invocation.
  */
 export function wrapMcpTool(client: MCPServerClient, mcpTool: MCPToolDef): ReturnType<typeof tool> {
   const zodSchema = mcpTool.inputSchema ? jsonSchemaToZod(mcpTool.inputSchema) : z.object({});
@@ -64,11 +85,28 @@ export function wrapMcpTool(client: MCPServerClient, mcpTool: MCPToolDef): Retur
       ? (zodSchema.shape as Record<string, ZodSchema>)
       : ({} as Record<string, ZodSchema>);
 
+  // If the schema has no properties, inject an optional placeholder
+  // so providers always see at least one property in the rendered
+  // tool definition. The placeholder is stripped before MCP forward.
+  if (Object.keys(args).length === 0) {
+    args[PLACEHOLDER_KEY] = z
+      .boolean()
+      .optional()
+      .describe(
+        'Reserved. Pass true or omit. Required by some providers when a tool has no parameters.',
+      );
+  }
+
   return tool({
     description: mcpTool.description ?? '',
     args,
-    async execute(callArgs: Record<string, unknown>) {
-      const result = (await client.callTool(mcpTool.name, callArgs)) as {
+    async execute(callArgs: Record<string, unknown> | undefined) {
+      // Handle Claude's `undefined` for no-arg tool calls (issue #9020)
+      // and strip the placeholder before forwarding to the MCP server.
+      const cleanArgs: Record<string, unknown> = { ...(callArgs ?? {}) };
+      delete cleanArgs[PLACEHOLDER_KEY];
+
+      const result = (await client.callTool(mcpTool.name, cleanArgs)) as {
         content?: unknown[];
         isError?: boolean;
       };

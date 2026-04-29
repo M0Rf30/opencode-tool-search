@@ -1,6 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import type { MCPServerClient } from '../src/mcp/client.js';
 import { connectAll } from '../src/mcp/index.js';
-import { jsonSchemaToZod } from '../src/mcp/wrap.js';
+import { jsonSchemaToZod, wrapMcpTool } from '../src/mcp/wrap.js';
+
+/**
+ * Build a minimal stub MCPServerClient that records callTool invocations
+ * so tests can assert the exact args forwarded to the MCP server.
+ */
+function stubClient(returnValue: unknown = { content: [{ type: 'text', text: 'ok' }] }) {
+  const callTool = vi.fn().mockResolvedValue(returnValue);
+  return { callTool: callTool as unknown } as unknown as MCPServerClient & {
+    callTool: ReturnType<typeof vi.fn>;
+  };
+}
 
 describe('connectAll', () => {
   it('returns empty registration when config is undefined', async () => {
@@ -75,5 +88,96 @@ describe('jsonSchemaToZod', () => {
   it('converts array schema', () => {
     const schema = jsonSchemaToZod({ type: 'array', items: { type: 'string' } });
     expect(schema.parse(['a', 'b'])).toEqual(['a', 'b']);
+  });
+});
+
+describe('wrapMcpTool — empty-args placeholder', () => {
+  it('injects optional _placeholder when inputSchema is missing', () => {
+    const client = stubClient();
+    const wrapped = wrapMcpTool(client, { name: 'noargs', description: 'no args tool' });
+    // The plugin tool's args record must contain _placeholder so the
+    // rendered JSON Schema has at least one property.
+    expect(wrapped.args).toBeDefined();
+    expect(wrapped.args._placeholder).toBeDefined();
+    expect(wrapped.args._placeholder).toBeInstanceOf(z.ZodOptional);
+  });
+
+  it('injects optional _placeholder when inputSchema has empty properties', () => {
+    const client = stubClient();
+    const wrapped = wrapMcpTool(client, {
+      name: 'noargs2',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+    });
+    expect(wrapped.args._placeholder).toBeDefined();
+  });
+
+  it('does NOT inject _placeholder when inputSchema has real properties', () => {
+    const client = stubClient();
+    const wrapped = wrapMcpTool(client, {
+      name: 'withargs',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query'],
+      },
+    });
+    expect(wrapped.args.query).toBeDefined();
+    expect(wrapped.args._placeholder).toBeUndefined();
+  });
+
+  it('strips _placeholder from args before forwarding to MCP server', async () => {
+    const client = stubClient();
+    const wrapped = wrapMcpTool(client, { name: 'noargs', description: '' });
+    await wrapped.execute({ _placeholder: true } as never, {} as never);
+    expect(client.callTool).toHaveBeenCalledWith('noargs', {});
+  });
+
+  it('handles undefined args (Claude no-arg tool calls, issue #9020)', async () => {
+    const client = stubClient();
+    const wrapped = wrapMcpTool(client, { name: 'noargs', description: '' });
+    await wrapped.execute(undefined as never, {} as never);
+    expect(client.callTool).toHaveBeenCalledWith('noargs', {});
+  });
+
+  it('preserves real args while still stripping _placeholder', async () => {
+    const client = stubClient();
+    const wrapped = wrapMcpTool(client, {
+      name: 'mixed',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+      },
+    });
+    await wrapped.execute({ query: 'hello', _placeholder: true } as never, {} as never);
+    expect(client.callTool).toHaveBeenCalledWith('mixed', { query: 'hello' });
+  });
+
+  it('returns concatenated text from MCP result content blocks', async () => {
+    const client = stubClient({
+      content: [
+        { type: 'text', text: 'first' },
+        { type: 'text', text: 'second' },
+      ],
+    });
+    const wrapped = wrapMcpTool(client, { name: 'noargs', description: '' });
+    const result = await wrapped.execute({} as never, {} as never);
+    expect(result).toBe('first\n\nsecond');
+  });
+
+  it('returns "No output" placeholder when MCP returns no text content', async () => {
+    const client = stubClient({ content: [] });
+    const wrapped = wrapMcpTool(client, { name: 'noargs', description: '' });
+    const result = await wrapped.execute({} as never, {} as never);
+    expect(result).toBe('No output');
+  });
+
+  it('prefixes [MCP error] when isError is true', async () => {
+    const client = stubClient({
+      content: [{ type: 'text', text: 'something failed' }],
+      isError: true,
+    });
+    const wrapped = wrapMcpTool(client, { name: 'noargs', description: '' });
+    const result = await wrapped.execute({} as never, {} as never);
+    expect(result).toBe('[MCP error] something failed');
   });
 });

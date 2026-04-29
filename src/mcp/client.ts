@@ -2,10 +2,17 @@ import process from 'node:process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { MCPServerConfig } from '../types.js';
 
 const CLIENT_NAME = 'opencode-tool-search';
 const CLIENT_VERSION = '0.5.0-mcp.0';
+
+// Default MCP tool execution timeout. Matches a sensible upper bound
+// for typical MCP tools while allowing long-running operations
+// (browser automation, search indexers) to keep the timeout window
+// alive via progress signals (resetTimeoutOnProgress: true).
+const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 
 /**
  * Wraps a single MCP server connection. Supports local stdio transport
@@ -68,7 +75,13 @@ export class MCPServerClient {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.connected) await this.connect();
-    return await this.client.callTool({ name, arguments: args });
+    return await this.client.callTool({ name, arguments: args }, CallToolResultSchema, {
+      // Match native OpenCode's convertMcpTool invocation:
+      // long-running tools that emit progress notifications keep
+      // the timeout window alive instead of failing at 60s.
+      resetTimeoutOnProgress: true,
+      timeout: DEFAULT_CALL_TIMEOUT_MS,
+    });
   }
 
   async close(): Promise<void> {
