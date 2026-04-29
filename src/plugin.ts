@@ -1,6 +1,7 @@
 import type { Hooks, Plugin, PluginInput, PluginOptions } from '@opencode-ai/plugin';
 import { tool } from '@opencode-ai/plugin';
 import { Catalog } from './catalog.js';
+import { connectAll } from './mcp/index.js';
 import type { CatalogEntry, ToolSearchConfig } from './types.js';
 
 const SEARCH_TOOL_IDS = new Set(['tool_search', 'tool_search_regex']);
@@ -60,12 +61,31 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
   let totalCount = 0;
   let toastShown = false;
 
+  // Connect to any configured MCP servers and wrap their tools as native
+  // plugin tools. Connection failures for individual servers are isolated.
+  const mcpRegistration = await connectAll(config.mcp);
+  const mcpToolCount = Object.keys(mcpRegistration.tools).length;
+  if (mcpToolCount > 0) {
+    setTimeout(() => {
+      showToast(
+        ctx,
+        'Tool Search',
+        `MCP integration active — ${mcpToolCount} tool(s) from ${
+          Object.keys(config.mcp?.servers ?? {}).length
+        } server(s).`,
+        'info',
+        4000,
+      );
+    }, 1500);
+  }
+
   setTimeout(() => {
     showToast(ctx, 'Tool Search', 'Active — tools will be deferred on first prompt.', 'info', 4000);
   }, 3000);
 
   return {
     tool: {
+      ...mcpRegistration.tools,
       tool_search: tool({
         description: [
           'Search for available tools by keyword.',

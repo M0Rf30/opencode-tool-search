@@ -8,5 +8,5 @@ await build({
   format: 'esm',
   platform: 'node',
   target: 'node20',
-  external: ['@opencode-ai/plugin', 'zod', 'effect'],
+  external: ['@opencode-ai/plugin', 'zod', 'effect', '@modelcontextprotocol/sdk'],
 });
