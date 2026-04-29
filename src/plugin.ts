@@ -1,6 +1,7 @@
 import type { Hooks, Plugin, PluginInput, PluginOptions } from '@opencode-ai/plugin';
 import { tool } from '@opencode-ai/plugin';
 import { Catalog } from './catalog.js';
+import { createToolPairValidator } from './hooks/tool-pair-validator.js';
 import { connectAll } from './mcp/index.js';
 import type { CatalogEntry, ToolSearchConfig } from './types.js';
 
@@ -82,6 +83,8 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
   setTimeout(() => {
     showToast(ctx, 'Tool Search', 'Active — tools will be deferred on first prompt.', 'info', 4000);
   }, 3000);
+
+  const toolPairValidator = createToolPairValidator();
 
   return {
     tool: {
@@ -172,6 +175,13 @@ export const ToolSearchPlugin: Plugin = async (ctx, options?: PluginOptions): Pr
         // (Missing required parameter: 'input[N].arguments'). See issue #7.
       }
     },
+
+    // Heal orphaned `tool_use` blocks (without matching `tool_result`)
+    // before each request reaches the provider. Prevents Anthropic's
+    // "tool_use ids were found without tool_result blocks" rejection
+    // and restores corrupted sessions in-flight.
+    // See anomalyco/opencode #21326, #21489, #16749.
+    'experimental.chat.messages.transform': toolPairValidator,
 
     'experimental.chat.system.transform': async (input, output) => {
       totalCount = catalog.size;
