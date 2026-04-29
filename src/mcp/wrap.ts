@@ -16,14 +16,62 @@ type ZodSchema = z.ZodTypeAny;
 const PLACEHOLDER_KEY = '_placeholder';
 
 /**
+ * JSON Schema keywords that some providers reject. Specifically,
+ * Anthropic rejects `contentEncoding` and `contentMediaType` on tool
+ * input schemas (these appear on MCP tools that handle binary/file
+ * blobs, e.g., base64-encoded image params). We strip them recursively
+ * before Zod conversion so they cannot leak through into the schema
+ * sent to the provider.
+ *
+ * Matches the strip strategy in oh-my-openagent's `sanitizeJsonSchema`.
+ * Currently defensive-only since Zod's `toJSONSchema` does not
+ * preserve these keywords on output, but futureproof against Zod
+ * versions that may propagate them via `.meta()` annotations or
+ * direct schema authoring.
+ */
+const UNSUPPORTED_SCHEMA_KEYWORDS = new Set(['contentEncoding', 'contentMediaType']);
+
+/**
+ * Recursively strip provider-incompatible JSON Schema keywords from
+ * a schema fragment. The strip skips key matching when descending
+ * through a `properties` map (so a property literally named
+ * `contentEncoding` survives — the keyword name only matters at
+ * schema-keyword positions, never inside `properties` dictionaries).
+ */
+function stripUnsupportedKeywords(value: unknown, isPropertyName = false): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUnsupportedKeywords(item, false));
+  }
+
+  if (!value || typeof value !== 'object') return value;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (!isPropertyName && UNSUPPORTED_SCHEMA_KEYWORDS.has(key)) continue;
+    const childIsPropertyName = key === 'properties' && !isPropertyName;
+    result[key] = stripUnsupportedKeywords(nested, childIsPropertyName);
+  }
+  return result;
+}
+
+/**
  * Naive JSON Schema → Zod conversion sufficient for typical MCP tool
  * input schemas (object root with primitive properties, enums, arrays,
  * nested objects). Falls back to z.any() for unknown shapes.
  *
  * Mirrors opencode-mcp-adapter's behavior for compatibility with MCP
- * servers that already work there.
+ * servers that already work there. Provider-incompatible keywords
+ * (`contentEncoding`, `contentMediaType`) are stripped at the entry
+ * point before recursion.
  */
 export function jsonSchemaToZod(schema: unknown): ZodSchema {
+  if (!schema || typeof schema !== 'object') return z.any();
+
+  const sanitized = stripUnsupportedKeywords(schema) as Record<string, unknown>;
+  return jsonSchemaToZodInner(sanitized);
+}
+
+function jsonSchemaToZodInner(schema: unknown): ZodSchema {
   if (!schema || typeof schema !== 'object') return z.any();
 
   const s = schema as Record<string, unknown>;
@@ -40,14 +88,14 @@ export function jsonSchemaToZod(schema: unknown): ZodSchema {
   }
   if (s.type === 'number' || s.type === 'integer') return z.number();
   if (s.type === 'boolean') return z.boolean();
-  if (s.type === 'array') return z.array(jsonSchemaToZod(s.items));
+  if (s.type === 'array') return z.array(jsonSchemaToZodInner(s.items));
 
   if (s.type === 'object') {
     const shape: Record<string, ZodSchema> = {};
     const required = new Set<string>(Array.isArray(s.required) ? (s.required as string[]) : []);
     const properties = (s.properties as Record<string, unknown>) ?? {};
     for (const [key, prop] of Object.entries(properties)) {
-      let zodType = jsonSchemaToZod(prop);
+      let zodType = jsonSchemaToZodInner(prop);
       if (!required.has(key)) zodType = zodType.optional();
       shape[key] = zodType;
     }

@@ -89,6 +89,56 @@ describe('jsonSchemaToZod', () => {
     const schema = jsonSchemaToZod({ type: 'array', items: { type: 'string' } });
     expect(schema.parse(['a', 'b'])).toEqual(['a', 'b']);
   });
+
+  it('strips contentEncoding/contentMediaType at the top level', () => {
+    // These keywords are valid JSON Schema but rejected by Anthropic.
+    // Zod conversion proceeds without them; parsing still works.
+    const schema = jsonSchemaToZod({
+      type: 'string',
+      contentEncoding: 'base64',
+      contentMediaType: 'image/png',
+    });
+    expect(schema.parse('aGVsbG8=')).toBe('aGVsbG8=');
+  });
+
+  it('strips contentEncoding/contentMediaType from nested object properties', () => {
+    const schema = jsonSchemaToZod({
+      type: 'object',
+      properties: {
+        image: {
+          type: 'string',
+          contentEncoding: 'base64',
+          contentMediaType: 'image/png',
+        },
+      },
+      required: ['image'],
+    });
+    expect(schema.parse({ image: 'data' })).toEqual({ image: 'data' });
+  });
+
+  it('strips contentEncoding/contentMediaType from array item schemas', () => {
+    const schema = jsonSchemaToZod({
+      type: 'array',
+      items: {
+        type: 'string',
+        contentEncoding: 'base64',
+      },
+    });
+    expect(schema.parse(['a', 'b'])).toEqual(['a', 'b']);
+  });
+
+  it('preserves a real property literally named contentEncoding', () => {
+    // The strip only applies at schema-keyword positions, not inside
+    // a `properties` map. A property with that name survives.
+    const schema = jsonSchemaToZod({
+      type: 'object',
+      properties: {
+        contentEncoding: { type: 'string' },
+      },
+      required: ['contentEncoding'],
+    });
+    expect(schema.parse({ contentEncoding: 'utf-8' })).toEqual({ contentEncoding: 'utf-8' });
+  });
 });
 
 describe('wrapMcpTool — empty-args placeholder', () => {
